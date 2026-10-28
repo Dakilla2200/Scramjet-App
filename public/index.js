@@ -59,6 +59,12 @@ form.addEventListener("submit", async (event) => {
 	}
 	const frame = scramjet.createFrame();
 	frame.frame.id = "sj-frame";
+	// Auto-load a page when opened as ?url=https://example.com
+const startUrl = new URLSearchParams(location.search).get("url");
+if (startUrl) {
+	address.value = startUrl;
+	form.requestSubmit();
+}
 	document.body.appendChild(frame.frame);
 	frame.go(url);
 });
