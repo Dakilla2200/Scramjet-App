@@ -34,18 +34,23 @@ scramjet.init();
 
 const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
 
-form.addEventListener("submit", async (event) => {
-	event.preventDefault();
+const loading = document.getElementById("sj-loading");
+
+async function openUrl(input) {
+	error.textContent = "";
+	errorCode.textContent = "";
+	loading.hidden = false;
 
 	try {
 		await registerSW();
 	} catch (err) {
 		error.textContent = "Failed to register service worker.";
 		errorCode.textContent = err.toString();
+		loading.hidden = true;
 		throw err;
 	}
 
-	const url = search(address.value, searchEngine.value);
+	const url = search(input, searchEngine.value);
 
 	let wispUrl =
 		(location.protocol === "https:" ? "wss" : "ws") +
@@ -57,14 +62,29 @@ form.addEventListener("submit", async (event) => {
 			{ websocket: wispUrl },
 		]);
 	}
+	const old = document.getElementById("sj-frame");
+	if (old) old.remove();
 	const frame = scramjet.createFrame();
 	frame.frame.id = "sj-frame";
-	// Auto-load a page when opened as ?url=https://example.com
-const startUrl = new URLSearchParams(location.search).get("url");
-if (startUrl) {
-	address.value = startUrl;
-	form.requestSubmit();
-}
+	frame.frame.title = "Proxe";
 	document.body.appendChild(frame.frame);
 	frame.go(url);
+	loading.hidden = true;
+}
+
+form.addEventListener("submit", (event) => {
+	event.preventDefault();
+	const value = address.value.trim();
+	if (value) openUrl(value);
 });
+
+// Opened from the Proxe site as ?url=https://example.com
+const startUrl = new URLSearchParams(location.search).get("url");
+if (startUrl) {
+	form.hidden = true;
+	address.value = startUrl;
+	openUrl(startUrl).catch(() => {
+		form.hidden = false;
+		loading.hidden = true;
+	});
+}
