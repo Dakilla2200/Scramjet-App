@@ -11,7 +11,8 @@
 		"start": "node src/index.js",
 		"format": "prettier --write .",
 		"lint": "eslint ./src/",
-		"lint:fix": "eslint ./src/ --fix"
+		"lint:fix": "eslint ./src/ --fix",
+		"export-static": "node scripts/export-static.js"
 	},
 	"keywords": [
 		"proxy"
