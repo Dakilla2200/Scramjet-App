@@ -15,7 +15,7 @@
 const PKT_CONNECT = 0x01, PKT_DATA = 0x02, PKT_CONTINUE = 0x03, PKT_CLOSE = 0x04;
 const CLOSE_VOLUNTARY = 0x01, CLOSE_NETWORK_ERROR = 0x02, CLOSE_INVALID = 0x41,
   CLOSE_UNREACHABLE = 0x42, CLOSE_BLOCKED = 0x48;
-const BUFFER = 128; // packets the client may send per stream before waiting for a CONTINUE
+const BUFFER = 256; // packets the client may send per stream before waiting for a CONTINUE
 
 const env = (k: string) => { try { return Deno.env.get(k) ?? ""; } catch { return ""; } };
 const ORIGINS = (env("ALLOWED_ORIGINS") || "https://proxegames.com,https://www.proxegames.com")
@@ -71,7 +71,7 @@ function serveWisp(ws: WebSocket) {
   }
 
   async function pump(id: number, s: Stream) {
-    const buf = new Uint8Array(64 * 1024);
+    const buf = new Uint8Array(128 * 1024);
     try {
       while (!s.closed) {
         const n = await s.conn!.read(buf);
@@ -98,6 +98,8 @@ function serveWisp(ws: WebSocket) {
       try {
         s.conn = await Deno.connect({ hostname: host, port, transport: "tcp" });
         if (s.closed) { try { s.conn.close(); } catch { /* */ } return; }
+        // send small packets (TLS handshakes, requests) immediately instead of batching them
+        try { s.conn.setNoDelay(true); s.conn.setKeepAlive(true); } catch { /* not supported */ }
         pump(id, s);
       } catch {
         close(id, CLOSE_UNREACHABLE, true);
