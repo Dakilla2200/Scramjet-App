@@ -4,7 +4,8 @@
 //
 // Routes:
 //   wss://<host>/wisp/   the proxy (any path ending in /wisp or /wisp/ works)
-//   https://<host>/      "Proxe wisp server is running" (handy for status checks)
+//   https://<host>/      the Scramjet proxy page (files in ../public and ./static)
+//   https://<host>/health  "Proxe wisp server is running" (handy for status checks)
 //
 // Settings (Deno Deploy > your project > Settings > Environment variables), all optional:
 //   ALLOWED_ORIGINS  comma-separated sites allowed to use this server.
@@ -24,9 +25,10 @@ const PORTS = new Set((env("ALLOWED_PORTS") || "80,443,8080,8443")
   .split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => n > 0 && n < 65536));
 const ALLOW_LOCAL = env("ALLOW_LOCAL") === "1"; // testing only
 
-function originOk(origin: string | null): boolean {
+function originOk(origin: string | null, self: string): boolean {
   if (ORIGINS.includes("*")) return true;
   if (!origin) return false;
+  if (origin.toLowerCase() === self.toLowerCase()) return true; // this server's own proxy page
   return ORIGINS.includes(origin.toLowerCase());
 }
 
@@ -139,14 +141,54 @@ function serveWisp(ws: WebSocket) {
   ws.onclose = ws.onerror = () => { for (const id of [...streams.keys()]) close(id, CLOSE_VOLUNTARY, false); };
 }
 
-Deno.serve((req) => {
+// ---- the Scramjet proxy page ----
+const ROOTS: [string, URL][] = [
+  ["/scram/", new URL("./static/scram/", import.meta.url)],
+  ["/libcurl/", new URL("./static/libcurl/", import.meta.url)],
+  ["/baremux/", new URL("./static/baremux/", import.meta.url)],
+  ["/", new URL("../public/", import.meta.url)],
+];
+const TYPES: Record<string, string> = {
+  html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8", cjs: "text/javascript; charset=utf-8", json: "application/json",
+  wasm: "application/wasm", png: "image/png", ico: "image/x-icon", svg: "image/svg+xml", txt: "text/plain; charset=utf-8",
+};
+async function serveFile(path: string): Promise<Response | null> {
+  let p: string;
+  try { p = decodeURIComponent(path); } catch { return null; }
+  if (p.includes("..") || p.includes("\\")) return null;
+  if (p.endsWith("/")) p += "index.html";
+  for (const [prefix, dir] of ROOTS) {
+    if (!p.startsWith(prefix)) continue;
+    const rel = p.slice(prefix.length);
+    try {
+      const file = new URL(rel, dir);
+      const body = await Deno.readFile(file);
+      const ext = rel.split(".").pop()!.toLowerCase();
+      const h: Record<string, string> = { "content-type": TYPES[ext] || "application/octet-stream" };
+      // the page and service worker must update right away; library files can be cached
+      h["cache-control"] = /\.(html|js)$/.test(rel) && prefix === "/" ? "no-cache" : "public, max-age=3600";
+      return new Response(body, { headers: h });
+    } catch { /* not in this folder */ }
+    if (prefix !== "/") return null;
+  }
+  return null;
+}
+
+Deno.serve(async (req) => {
   const url = new URL(req.url);
   const isWs = (req.headers.get("upgrade") || "").toLowerCase() === "websocket";
   if (isWs && /\/wisp\/?$/.test(url.pathname)) {
-    if (!originOk(req.headers.get("origin"))) return new Response("Forbidden", { status: 403 });
+    if (!originOk(req.headers.get("origin"), url.origin)) return new Response("Forbidden", { status: 403 });
     const { socket, response } = Deno.upgradeWebSocket(req);
     serveWisp(socket);
     return response;
+  }
+  if (url.pathname !== "/health" && (req.method === "GET" || req.method === "HEAD")) {
+    const file = await serveFile(url.pathname);
+    if (file) return file;
+    const nf = await serveFile("/404.html");
+    if (nf) return new Response(nf.body, { status: 404, headers: nf.headers });
   }
   return new Response("Proxe wisp server is running\n", {
     headers: { "content-type": "text/plain; charset=utf-8", "access-control-allow-origin": "*", "cache-control": "no-store" },

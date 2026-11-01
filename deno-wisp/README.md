@@ -1,10 +1,11 @@
 # Proxe wisp server (Deno Deploy)
 
-A small Wisp v1 server for Proxe's built-in proxy, made to run on Deno Deploy's free tier.
+A small Wisp v1 server for Proxe's built-in proxy, made to run on Deno Deploy's free tier. It also serves the
+Scramjet proxy page (`public/`) at `/`, with Scramjet's own files in `deno-wisp/static/`.
 
 **Deploy:** in Deno Deploy, create an app from this repo with the entrypoint `deno-wisp/main.ts`
-(no framework, no install or build command). Opening the app's URL should show
-"Proxe wisp server is running".
+(no framework, no install or build command). Opening the app's URL shows the proxy page, and
+`/health` shows "Proxe wisp server is running".
 
 **Use it in Proxe:** Edit site → Wisp servers → `wss://<your-app-url>/wisp/` first, backups after it,
 separated by spaces.
